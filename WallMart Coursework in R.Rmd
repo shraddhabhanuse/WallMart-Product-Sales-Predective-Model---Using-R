@@ -1,0 +1,329 @@
+---
+title: "WallMart Coursework in R"
+output: html_notebook
+---
+
+
+Installing Packages and Libraries
+```{r}
+install.packages("data.table")
+library(data.table)
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("psych")
+library(psych)
+install.packages("corrplot")
+library(corrplot)
+install.packages("dplyr")
+library(dplyr)
+install.packages("plyr")
+library(plyr)
+install.packages("Amelia")
+library(Amelia)
+library(tidyr)
+library(stringr)
+library(dummies)
+```
+
+Setting the Working Directory & Loading the datasets as data frames
+```{r}
+#setwd("D:/RCW/")
+train <- read.csv("D:/RCW/Train.csv")
+test = read.csv("D:/RCW/Test.csv")
+```
+
+Printing the top 6 rows of the train & test data frames by using head()
+```{r}
+head(train)
+```
+
+```{r}
+head(test)
+```
+
+
+Checking the Dimensions of the dataset by using dim()
+The train dataset has 8523(rows) 12(cols)
+The test dataset has 5681(rows) 11(cols)
+```{r}
+dim(train)
+dim(test)
+```
+
+Checking the column names to find the missing columns
+We find the 'Item_Outlet_Sales' is missing from test dataset.
+This is because we will be predicting the values of 'Item_Outlet_Sales'
+```{r}
+names(train)
+```
+```{r}
+names(test)
+```
+
+Checking if this data has missing values.
+We are using table to group the values by False and True.
+We find 1463 NA values in the train dataset.
+```{r}
+table(is.na(train))
+```
+Checking the variables wisth the count of NA values.
+We find only Item_Weight has the 1463 NA values.
+```{r}
+colSums(is.na(train))
+```
+
+Checking the variables and their types in train dataset
+```{r}
+str(train)
+```
+
+We will see a summary of the train dataset.
+```{r}
+summary(train)
+```
+
+From the above information we can:
+
+Exploring the Numerical Columns:
+
+1.Item_Weight - There are 1463 NA Values
+
+2.Item Visibility - Contains no NA Values, but contains 0 values.
+
+3.Item_MRP - Contains No NA/0 values.Also has an acceptable price range with no outliers.
+
+4.Outlet_Establishment_Year - Contains no NA/0 values. Average mean is 1997, implying mostly old stores.
+
+5.Item_Outlet_Sales - Contains no NA/0 values.
+
+
+Exploring the Factor Columns:
+
+1.Item_Identifier - Contains 1559 unique values
+```{r}
+install.packages("plyr")
+library(plyr)
+library(dplyr)
+train %>% 
+  summarise(n_distinct(Item_Identifier))
+```
+
+2.Item_Fat_Content - We find the level values Low Fat/low fat/LF are same but typed incorrectly. 
+```{r}
+train %>%
+group_by(Item_Fat_Content) %>% summarise(Count = n()) %>% arrange(desc(Count))
+```
+
+3.Item_Type - Categories of Items with counts
+```{r}
+train%>%
+group_by(Item_Type) %>%
+summarise(Count = n()) %>% arrange(desc(Count))
+```
+
+4.Outlet_Identifier - There are Item information from 10 different Outlets
+
+```{r}
+train %>%
+group_by(Outlet_Identifier) %>%
+summarise(Count = n()) %>% arrange(desc(Count))
+```
+
+
+5.Outlet_Size - Outlet Size data not properly levelled. (2410 counts)
+
+```{r}
+train%>%
+group_by(Outlet_Size) %>% summarise(Count = n())
+```
+
+6.Outlet_Location_Type - Number of Outlet Location type with counts. We find the data is normally distributed.
+
+```{r}
+train%>%
+group_by(Outlet_Location_Type) %>%
+summarise(Count = n()) %>% arrange(desc(Count))
+```
+
+
+7.Outlet_Type - We find the Types of Outlet
+```{r}
+train%>%
+group_by(Outlet_Type)%>%
+summarise(Count=n())%>% arrange(desc(Count))
+```
+
+
+
+Data Manipulation
+
+
+We are creating a new variable in test dataset Item_Outlet_Sales, to match our number of rows with train dataset.
+```{r}
+test$Item_Outlet_Sales <- 1
+names(test)
+```
+
+Now, we are combining thee train and test data with rbind function
+```{r}
+combi <- rbind(train, test)
+dim(combi)
+```
+
+
+We are imputing the NA values in Item_Weight with the median of the values of the column. 
+To calculate the median of the non-missing values if are passing the argument na.rm=TRUE 
+```{r}
+
+combi$Item_Weight[is.na(combi$Item_Weight)] <- median(combi$Item_Weight, na.rm = TRUE)
+summary(combi$Item_Weight)
+
+```
+
+There are 0 values in in Item_visibility, therefore, we also impute the 0s with median of the column values.
+```{r}
+combi$Item_Visibility <- ifelse(combi$Item_Visibility == 0, median(combi$Item_Visibility),combi$Item_Visibility)
+summary(combi$Item_Visibility)
+
+```
+
+Renaming the blank level in of Outlet_Size to 'Other'
+```{r}
+levels(combi$Outlet_Size)[1] <- "Other"
+table(combi$Outlet_Size)
+```
+
+Renaming the levels of Item_Fat_Content to 'Low Fat' & 'Regular'
+```{r}
+combi$Item_Fat_Content <- revalue(combi$Item_Fat_Content,c("LF" = "Low Fat", "reg" = "Regular", "low fat" = "Low Fat"))
+table(combi$Item_Fat_Content)
+
+```
+
+
+
+Data Visualisation
+
+
+```{r}
+str(combi)
+```
+Dividing data to Train & Test before Label & Hot Encoding
+
+```{r}
+new_train_combi <- combi %>% filter(Item_Outlet_Sales != 1)
+new_test_combi <- combi %>% filter(Item_Outlet_Sales == 1)
+str(new_train_combi)
+str(new_test_combi)
+```
+
+
+We have tried to visualise Item_Outlet_Sales with different Categorical Values
+
+```{r}
+
+ggplot(new_train_combi, aes(Item_Fat_Content, Item_Outlet_Sales)) + geom_bar(stat = "identity", color = "red") + ggtitle("Item_Fat_Content vs Total Sales")
+
+ggplot(new_train_combi, aes(Item_Type, Item_Outlet_Sales)) + geom_bar(stat = "identity", color = "red") + theme(axis.text.x = element_text(angle = 90), axis.text.y = element_text(angle = 0)) + ggtitle("Item_Type vs Total Sales")
+
+ggplot(new_train_combi, aes(Outlet_Size, Item_Outlet_Sales)) + geom_bar(stat = "identity", color = "blue") + ggtitle("Outlet_Size vs Total Sales")
+
+ggplot(new_train_combi, aes(Outlet_Location_Type, Item_Outlet_Sales)) + geom_bar(stat = "identity", color = "red") + ggtitle("Outlet_Location_Type vs Total Sales")
+
+ggplot(new_train_combi, aes(Outlet_Type, Item_Outlet_Sales)) + geom_bar(stat = "identity", color = "blue") + ggtitle("Outlet_Size vs Total Sales")
+
+qplot(x=Item_Type,y=Item_Outlet_Sales, data=new_train_combi,geom = "boxplot",) + theme(axis.text.x = element_text(angle = 90), axis.text.y = element_text(angle = 0))
+
+ggplot(combi, aes(Item_Type, Item_MRP)) + geom_bar(stat = "identity", color = "blue")+ theme(axis.text.x = element_text(angle = 90), axis.text.y = element_text(angle = 0)) + ggtitle("Item_Type vs Item_MRP")
+
+```
+
+
+
+We have tried to visualise Item_Outlet_Sales with different Continuous Values:
+
+
+```{r}
+ggplot(new_train_combi, aes(Item_Weight, Item_Outlet_Sales)) + geom_point(size = .5, color="navy") + ggtitle("Item_Weight vs Item Outlet Sales")
+
+ggplot(new_train_combi, aes(Item_Visibility, Item_Outlet_Sales)) + geom_point(size = .5,  color = "blue") + ggtitle("Item_Visibility vs Total Sales")
+
+ggplot(new_train_combi, aes(Outlet_Establishment_Year, Item_Outlet_Sales)) + geom_bar(stat = "identity", color="blue")  + ggtitle("Outlet_Establishment_Year vs Item Outlet Sales")
+
+```
+
+
+
+
+Manupulating data with Label Encoding & Hot Encoding.
+
+Creating a dataframe combi_encoded similar to combi. 
+```{r}
+combi_encoded=as.data.frame(combi)
+str(combi_encoded)
+```
+
+
+Label Encoding.
+We will change the categorical variable Item_Fat_Content to numeric 0 & 1.
+```{r}
+combi_encoded$Item_Fat_Content <- ifelse(combi_encoded$Item_Fat_Content == "Regular",1,0)
+str(combi_encoded)
+```
+
+
+Hot Encoding.
+We will use dummy.data.frame() to split the catrgorical variable to a matrix of variables 0 and 1, 
+```{r}
+library(dummies)
+combi_encoded_dummies <- dummy.data.frame(combi_encoded, names = c('Outlet_Size','Outlet_Location_Type','Outlet_Type'),sep = '_')
+
+str(combi_encoded_dummies)
+```
+
+
+Now, We will save the dataframe with all columns with int and num and Drop thecolumns with Categorical variables/Factors.
+
+Item_Identifier, Outlet_Identifier,Item_Type has not been converted to matrix because of the high no of factor levels, which we cannot compute due to limited system resources.
+
+Hence we are removing the 3 variables from the final variable.
+```{r}
+combi_encoded_dummies_drop <- select(combi_encoded_dummies, -c(Item_Identifier, Outlet_Identifier,Item_Type))
+str(combi_encoded_dummies_drop)
+```
+
+```{r}
+summary(combi_encoded_dummies_drop)
+```
+
+Dividing data to Train & Test POST Label & Hot Encoding
+```{r}
+new_train_combi_encoded_dummies_drop <- combi_encoded_dummies_drop %>% filter(Item_Outlet_Sales != 1)
+new_test_combi_encoded_dummies_drop <- combi_encoded_dummies_drop %>% filter(Item_Outlet_Sales == 1)
+str(new_train_combi_encoded_dummies_drop)
+str(new_test_combi_encoded_dummies_drop)
+```
+
+
+
+```{r}
+library(GGally)
+ggpairs(combi_encoded_dummies_drop)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
